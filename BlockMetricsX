@@ -1,0 +1,136 @@
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+
+class BlockMetricsX:
+    def __init__(self, base_url='https://api.blockchair.com'):
+        self.base_url = base_url
+        self.data = {}
+
+    def fetch_block_data(self, blockchain: str, block_number: int) -> str:
+        endpoint = f'{self.base_url}/{blockchain}/blocks'
+        params = {'q': f'id({block_number})'}
+        response = requests.get(endpoint, params=params)
+        if response.status_code == 200:
+            self.data[f'{blockchain}_block_{block_number}'] = response.json()['data']
+            return f"Block data for {blockchain} block {block_number} fetched successfully."
+        else:
+            return f"Failed to fetch data: {response.status_code} - {response.text}"
+
+    def fetch_transaction_data(self, blockchain: str, tx_hash: str) -> str:
+        endpoint = f'{self.base_url}/{blockchain}/dashboards/transaction/{tx_hash}'
+        response = requests.get(endpoint)
+        if response.status_code == 200:
+            self.data[f'{blockchain}_tx_{tx_hash}'] = response.json()['data']
+            return f"Transaction data for {blockchain} tx {tx_hash} fetched successfully."
+        else:
+            return f"Failed to fetch data: {response.status_code} - {response.text}"
+
+    def get_block_data(self, blockchain: str, block_number: int) -> pd.DataFrame:
+        key = f'{blockchain}_block_{block_number}'
+        if key not in self.data:
+            return pd.DataFrame()
+        block_data = self.data[key][str(block_number)]
+        df = pd.DataFrame([block_data])
+        return df
+
+    def get_transaction_data(self, blockchain: str, tx_hash: str) -> pd.DataFrame:
+        key = f'{blockchain}_tx_{tx_hash}'
+        if key not in self.data:
+            return pd.DataFrame()
+        tx_data = self.data[key][tx_hash]
+        df = pd.DataFrame([tx_data])
+        return df
+
+    def plot_block_size(self, blockchain: str, block_number: int):
+        df = self.get_block_data(blockchain, block_number)
+        if df.empty:
+            print("No data available to plot.")
+            return
+        plt.figure(figsize=(12, 6))
+        plt.bar(df['id'], df['size'], label='Block Size')
+        plt.title(f'{blockchain.capitalize()} Block Size for Block {block_number}')
+        plt.xlabel('Block ID')
+        plt.ylabel('Size (Bytes)')
+        plt.legend()
+        plt.show()
+
+    def plot_transaction_fees(self, blockchain: str, tx_hash: str):
+        df = self.get_transaction_data(blockchain, tx_hash)
+        if df.empty:
+            print("No data available to plot.")
+            return
+        plt.figure(figsize=(12, 6))
+        plt.bar(df.index, df['transaction']['fee'], label='Transaction Fee')
+        plt.title(f'{blockchain.capitalize()} Transaction Fee for TX {tx_hash}')
+        plt.xlabel('Transaction Hash')
+        plt.ylabel('Fee (Satoshis/Wei)')
+        plt.legend()
+        plt.show()
+
+    def plot_block_timeseries(self, blockchain: str, start_block: int, end_block: int):
+        block_data = []
+        for block_number in range(start_block, end_block + 1):
+            self.fetch_block_data(blockchain, block_number)
+            block_data.append(self.get_block_data(blockchain, block_number))
+
+        df = pd.concat(block_data)
+        if df.empty:
+            print("No data available to plot.")
+            return
+
+        df['time'] = pd.to_datetime(df['time'])
+        df.set_index('time', inplace=True)
+
+        plt.figure(figsize=(12, 6))
+        plt.plot(df.index, df['size'], label='Block Size')
+        plt.title(f'{blockchain.capitalize()} Block Size Time Series')
+        plt.xlabel('Time')
+        plt.ylabel('Size (Bytes)')
+        plt.legend()
+        plt.show()
+
+    def plot_transaction_fees_timeseries(self, blockchain: str, tx_hashes: list):
+        tx_data = []
+        for tx_hash in tx_hashes:
+            self.fetch_transaction_data(blockchain, tx_hash)
+            tx_data.append(self.get_transaction_data(blockchain, tx_hash))
+
+        df = pd.concat(tx_data)
+        if df.empty:
+            print("No data available to plot.")
+            return
+
+        df['time'] = pd.to_datetime(df['transaction']['time'])
+        df.set_index('time', inplace=True)
+
+        plt.figure(figsize=(12, 6))
+        plt.plot(df.index, df['transaction']['fee'], label='Transaction Fee')
+        plt.title(f'{blockchain.capitalize()} Transaction Fees Time Series')
+        plt.xlabel('Time')
+        plt.ylabel('Fee (Satoshis/Wei)')
+        plt.legend()
+        plt.show()
+
+# Example Usage
+if __name__ == "__main__":
+    block_metrics_x = BlockMetricsX()
+
+    # Fetch block data for Bitcoin block 600000
+    print(block_metrics_x.fetch_block_data('bitcoin', 600000))
+
+    # Fetch transaction data for Bitcoin transaction hash
+    print(block_metrics_x.fetch_transaction_data('bitcoin', 'your_transaction_hash_here'))
+
+    # Plot block size for Bitcoin block 600000
+    block_metrics_x.plot_block_size('bitcoin', 600000)
+
+    # Plot transaction fees for Bitcoin transaction
+    block_metrics_x.plot_transaction_fees('bitcoin', 'your_transaction_hash_here')
+
+    # Plot block size time series for Bitcoin blocks 600000 to 600010
+    block_metrics_x.plot_block_timeseries('bitcoin', 600000, 600010)
+
+    # Plot transaction fees time series for Bitcoin transactions
+    transaction_hashes = ['tx_hash_1', 'tx_hash_2', 'tx_hash_3']
+    block_metrics_x.plot_transaction_fees_timeseries('bitcoin', transaction_hashes)
